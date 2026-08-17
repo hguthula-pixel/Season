@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Studio Gallery MR Viewer</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      background-color: #111111;
+      color: #ffffff;
+    }
+    #overlay-root {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 9999;
+    }
+    #ui-container {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      background: rgba(0, 0, 0, 0.90);
+      padding: 16px;
+      border-radius: 10px;
+      width: 320px;
+      max-height: 88vh;
+      overflow-y: auto;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      pointer-events: auto;
+      display: block;
+    }
+    h2 { margin: 0 0 8px 0; font-size: 17px; color: #4CAF50; }
+    h3 { margin: 12px 0 6px 0; font-size: 13px; color: #81C784; border-bottom: 1px solid #333; padding-bottom: 4px; }
+    label { font-size: 11px; font-weight: bold; color: #ddd; }
+    select, input[type="text"], input[type="number"], input[type="file"] {
+      width: 100%;
+      padding: 6px;
+      margin-top: 3px;
+      margin-bottom: 6px;
+      border-radius: 5px;
+      border: 1px solid #555;
+      background: #222;
+      color: #fff;
+      font-size: 12px;
+      box-sizing: border-box;
+    }
+    .control-group {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    button.btn {
+      flex: 1;
+      padding: 8px 4px;
+      background: #333;
+      color: white;
+      border: 1px solid #666;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button.btn:active { background: #4CAF50; }
+    button.btn-active {
+      background: #4CAF50 !important;
+      color: #000 !important;
+    }
+    #status-msg {
+      font-size: 11px;
+      color: #ff9800;
+      margin-top: 2px;
+      margin-bottom: 8px;
+      word-break: break-all;
+    }
+    .instructions {
+      font-size: 11px;
+      line-height: 1.3;
+      color: #bbb;
+      margin-top: 8px;
+      border-top: 1px solid #444;
+      padding-top: 6px;
+    }
+    #custom-ar-button {
+      position: absolute;
+      bottom: 25px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 28px;
+      border: 2px solid #4CAF50;
+      border-radius: 30px;
+      background: rgba(0, 0, 0, 0.9);
+      color: #ffffff;
+      font-weight: bold;
+      font-size: 15px;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      z-index: 10000;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+      pointer-events: auto;
+    }
+    #custom-ar-button:disabled {
+      border-color: #666;
+      color: #888;
+      cursor: not-allowed;
+    }
+  </style>
+
+  <!-- Three.js Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+</head>
+<body>
+
+  <div id="overlay-root">
+    <!-- Desktop 2D Sidebar -->
+    <div id="ui-container">
+      <h2>Gallery MR Studio</h2>
+      
+      <label for="model-select">Select Corridor Design:</label>
+      <select id="model-select">
+        <option value="design1.glb">Corridor Design 1</option>
+        <option value="design2.glb" selected>Corridor Design 2</option>
+        <option value="design3.glb">Corridor Design 3</option>
+        <option value="design4.glb">Corridor Design 4</option>
+        <option value="design5.glb">Corridor Design 5</option>
+      </select>
+
+      <div id="status-msg">Initializing...</div>
+
+      <h3>1. Corridor Controls</h3>
+      <div class="control-group">
+        <button id="lock-btn-2d" class="btn" onclick="toggleLockPosition()">🔒 Lock Corridor</button>
+        <button id="ghost-btn-2d" class="btn" onclick="toggleGhostMode()">👻 Ghost Mode</button>
+      </div>
+
+      <h3>2. Add Media via Raycast Surface Snapping</h3>
+      <label>Upload File (Image/Video):</label>
+      <input type="file" id="media-file-input" accept="image/*,video/*" onchange="handleFileUpload(event)">
+
+      <label>OR URL / YouTube Link:</label>
+      <input type="text" id="media-url-input" placeholder="https://example.com/art.jpg">
+      <div class="control-group">
+        <button class="btn" onclick="stageMediaFromURL('image')">+ Prepare Image</button>
+        <button class="btn" onclick="stageMediaFromURL('video')">+ Prepare Video</button>
+      </div>
+
+      <h3>3. Surface Placement & Scaling</h3>
+      <div id="selected-media-info" style="font-size: 11px; color: #4CAF50; margin-bottom: 6px;">Target: Corridor Model</div>
+      <div class="control-group">
+        <button id="surface-place-btn-2d" class="btn" onclick="toggleSurfacePlacementMode()">🖼️ Raycast Place Media</button>
+        <button class="btn" style="background:#c62828;" onclick="deleteSelectedMedia()">🗑️ Delete Frame</button>
+      </div>
+      <div class="control-group">
+        <button class="btn" onclick="scaleActiveTarget(1.1)">🔍 Scale Up 10%</button>
+        <button class="btn" onclick="scaleActiveTarget(0.9)">🔎 Scale Down 10%</button>
+      </div>
+      <div class="control-group">
+        <button class="btn" onclick="rotateActiveTarget(-15)">↺ Rot Y -15°</button>
+        <button class="btn" onclick="rotateActiveTarget(15)">↻ Rot Y +15°</button>
+      </div>
+
+      <div class="instructions">
+        • <b>Controller Scale Shortcut:</b> Push Right Thumbstick UP/DOWN to scale any selected media frame live in AR!<br>
+        • <b>Controller Rotate Shortcut:</b> Push Right Thumbstick LEFT/RIGHT to rotate.<br>
+        • <b>Left Controller X/Y:</b> Toggle 3D AR Menu.
+      </div>
+    </div>
+
+    <button id="custom-ar-button" disabled>LOADING MODEL...</button>
+  </div>
+
+  <script>
+    let scene, camera, renderer, controllerRight, controllerLeft, orbitControls;
+    let currentModel = null;
+    let modelGroup = null;
+    let axesHelper = null;
+    let floorReticle = null;
+    let surfaceReticle = null;
+    let laserLine = null;
+
+    // Staged & Placed Media Frame Management
+    let stagedMediaData = null;
+    let mediaFramesGroup = null;
+    let placedMediaFrames = [];
+    let selectedMediaFrame = null;
+    let selectionBoxHelper = null;
+
+    // Mode Flags
+    let isSurfacePlacementMode = false;
+    let surfaceHitPoint = new THREE.Vector3();
+    let surfaceHitNormal = new THREE.Vector3();
+    let surfaceHitBox = new THREE.Vector3();
+    let isSurfaceHitValid = false;
+
+    // 3D VR Menu Objects
+    let ar3DMenuGroup = null;
+    let ar3DButtons = [];
+    let hudCanvas, hudTexture, hudContext;
+
+    let xrSession = null;
+    let isModelReady = false;
+    let isLocked = false;
+    let isGhostMode = false;
+    let isRaycastMode = false;
+    let showAxes = true;
+    
+    // Raycaster Setup
+    const raycaster = new THREE.Raycaster();
+    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const rayIntersectionPoint = new THREE.Vector3();
+
+    let prevLeftBtnState = false;
+
+    // Loader Setup
+    const loader = new THREE.GLTFLoader();
+    const dracoLoader = new THREE.DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    loader.setDRACOLoader(dracoLoader);
+
+    init();
+    animate();
+
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x111111);
+
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 1000);
+      camera.position.set(0, 1.6, 5);
+
+      modelGroup = new THREE.Group();
+      scene.add(modelGroup);
+
+      mediaFramesGroup = new THREE.Group();
+      scene.add(mediaFramesGroup);
+
+      // Selection Box Helper
+      selectionBoxHelper = new THREE.BoxHelper(new THREE.Mesh(), 0x00ffff);
+      selectionBoxHelper.visible = false;
+      scene.add(selectionBoxHelper);
+
+      // 3D RGB Axes
+      axesHelper = new THREE.AxesHelper(1.5);
+      modelGroup.add(axesHelper);
+
+      // Target Floor Reticle
+      const ringGeo = new THREE.RingGeometry(0.12, 0.16, 32);
+      ringGeo.rotateX(-Math.PI / 2);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x00E676, side: THREE.DoubleSide });
+      floorReticle = new THREE.Mesh(ringGeo, ringMat);
+      floorReticle.visible = false;
+      scene.add(floorReticle);
+
+      // Surface Placement Reticle (Cyan Box Plane)
+      const surfGeo = new THREE.PlaneGeometry(0.6, 0.4);
+      const surfMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, side: THREE.DoubleSide, wireframe: true });
+      surfaceReticle = new THREE.Mesh(surfGeo, surfMat);
+      surfaceReticle.visible = false;
+      scene.add(surfaceReticle);
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+      scene.add(ambientLight);
+
+      const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      mainLight.position.set(5, 10, 7);
+      scene.add(mainLight);
+
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+      fillLight.position.set(-5, 5, -5);
+      scene.add(fillLight);
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.0;
+
+      renderer.xr.enabled = true;
+      renderer.xr.setReferenceSpaceType('local-floor');
+      document.body.appendChild(renderer.domElement);
+
+      orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+      orbitControls.enableDamping = true;
+
+      const arBtn = document.getElementById('custom-ar-button');
+      arBtn.addEventListener('click', onStartAR);
+
+      // Desktop Click Raycaster
+      renderer.domElement.addEventListener('pointerdown', onDesktopPointerDown);
+
+      // Controller Setup
+      controllerRight = renderer.xr.getController(0);
+      controllerRight.addEventListener('select', onControllerSelect);
+      scene.add(controllerRight);
+
+      // Laser Pointer
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-5)]);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x00E676, transparent: true, opacity: 0.8 });
+      laserLine = new THREE.Line(lineGeo, lineMat);
+      controllerRight.add(laserLine);
+
+      controllerLeft = renderer.xr.getController(1);
+      scene.add(controllerLeft);
+
+      // Build 3D AR Control Menu
+      build3DARMenu();
+
+      const initialFile = document.getElementById('model-select').value;
+      loadModel(initialFile);
+
+      document.getElementById('model-select').addEventListener('change', function(e) {
+        loadModel(e.target.value);
+      });
+
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    // --- NATIVE 3D AR CONTROL MENU ---
+    function build3DARMenu() {
+      ar3DMenuGroup = new THREE.Group();
+      ar3DMenuGroup.visible = false;
+
+      const bgGeo = new THREE.PlaneGeometry(0.85, 1.1);
+      const bgMat = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.DoubleSide, transparent: true, opacity: 0.92 });
+      const bgMesh = new THREE.Mesh(bgGeo, bgMat);
+      ar3DMenuGroup.add(bgMesh);
+
+      hudCanvas = document.createElement('canvas');
+      hudCanvas.width = 512;
+      hudCanvas.height = 256;
+      hudContext = hudCanvas.getContext('2d');
+      
+      hudTexture = new THREE.CanvasTexture(hudCanvas);
+      const hudGeo = new THREE.PlaneGeometry(0.76, 0.3);
+      const hudMat = new THREE.MeshBasicMaterial({ map: hudTexture, transparent: true });
+      const hudMesh = new THREE.Mesh(hudGeo, hudMat);
+      hudMesh.position.set(0, 0.35, 0.01);
+      ar3DMenuGroup.add(hudMesh);
+
+      const buttonsConfig = [
+        { label: "🎯 Floor Mark", action: "raycast", x: -0.2, y: 0.12, w: 0.36, h: 0.08, col: 0x2e7d32 },
+        { label: "🔒 Lock Corridor", action: "lock", x: 0.2, y: 0.12, w: 0.36, h: 0.08, col: 0xc62828 },
+        { label: "🖼️ Place Media Surface", action: "surface_place", x: -0.2, y: 0.02, w: 0.36, h: 0.08, col: 0x00838f },
+        { label: "🗑️ Delete Frame", action: "del_frame", x: 0.2, y: 0.02, w: 0.36, h: 0.08, col: 0xb71c1c },
+        { label: "🔍 Scale Up", action: "s+", x: -0.2, y: -0.08, w: 0.36, h: 0.08, col: 0x333333 },
+        { label: "🔎 Scale Down", action: "s-", x: 0.2, y: -0.08, w: 0.36, h: 0.08, col: 0x333333 },
+        { label: "↺ Rot Y -15°", action: "roty-", x: -0.2, y: -0.18, w: 0.36, h: 0.08, col: 0x333333 },
+        { label: "↻ Rot Y +15°", action: "roty+", x: 0.2, y: -0.18, w: 0.36, h: 0.08, col: 0x333333 },
+        { label: "▲ Height +10cm", action: "h+", x: -0.2, y: -0.28, w: 0.36, h: 0.08, col: 0x333333 },
+        { label: "▼ Height -10cm", action: "h-", x: 0.2, y: -0.28, w: 0.36, h: 0.08, col: 0x333333 },
+        { label: "👻 Ghost Mode", action: "ghost", x: -0.2, y: -0.38, w: 0.36, h: 0.08, col: 0x4a148c },
+        { label: "Reset Transforms", action: "reset", x: 0.2, y: -0.38, w: 0.36, h: 0.08, col: 0x424242 }
+      ];
+
+      buttonsConfig.forEach(cfg => {
+        const btnMesh = create3DButtonMesh(cfg.label, cfg.w, cfg.h, cfg.col);
+        btnMesh.position.set(cfg.x, cfg.y, 0.02);
+        btnMesh.userData = { action: cfg.action };
+        ar3DMenuGroup.add(btnMesh);
+        ar3DButtons.push(btnMesh);
+      });
+
+      scene.add(ar3DMenuGroup);
+    }
+
+    function create3DButtonMesh(text, width, height, colorHex) {
+      const btnGroup = new THREE.Group();
+
+      const bgGeo = new THREE.PlaneGeometry(width, height);
+      const bgMat = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide });
+      const bgMesh = new THREE.Mesh(bgGeo, bgMat);
+      btnGroup.add(bgMesh);
+
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 64;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'Bold 22px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 128, 32);
+
+      const tex = new THREE.CanvasTexture(c);
+      const txtGeo = new THREE.PlaneGeometry(width * 0.95, height * 0.95);
+      const txtMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+      const txtMesh = new THREE.Mesh(txtGeo, txtMat);
+      txtMesh.position.z = 0.005;
+      btnGroup.add(txtMesh);
+
+      btnGroup.userData = { isButton: true };
+      return btnGroup;
+    }
+
+    function positionPanelInFrontOfCamera() {
+      if (!camera || !ar3DMenuGroup) return;
+
+      const camPos = new THREE.Vector3();
+      const camQuat = new THREE.Quaternion();
+      camera.getWorldPosition(camPos);
+      camera.getWorldQuaternion(camQuat);
+
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camQuat);
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat);
+
+      forward.y = 0;
+      forward.normalize();
+      right.y = 0;
+      right.normalize();
+
+      const targetPos = camPos.clone()
+        .add(forward.multiplyScalar(1.1))
+        .add(right.multiplyScalar(-0.35));
+
+      ar3DMenuGroup.position.copy(targetPos);
+      ar3DMenuGroup.lookAt(camPos.x, targetPos.y, camPos.z);
+    }
+
+    function update3DHUDCanvas() {
+      if (!hudContext) return;
+
+      hudContext.clearRect(0, 0, 512, 256);
+      hudContext.fillStyle = '#1e1e1e';
+      hudContext.fillRect(0, 0, 512, 256);
+
+      hudContext.strokeStyle = isLocked ? '#ff5252' : '#4CAF50';
+      hudContext.lineWidth = 6;
+      hudContext.strokeRect(0, 0, 512, 256);
+
+      hudContext.fillStyle = '#00E676';
+      hudContext.font = 'Bold 24px Monospace';
+
+      const targetObj = selectedMediaFrame ? selectedMediaFrame : modelGroup;
+      const labelName = selectedMediaFrame ? "MEDIA FRAME" : "CORRIDOR MODEL";
+
+      hudContext.fillText(`TARGET: ${labelName}`, 20, 45);
+      if (targetObj) {
+        hudContext.fillText(`X: ${targetObj.position.x.toFixed(2)}m  Y: ${targetObj.position.y.toFixed(2)}m  Z: ${targetObj.position.z.toFixed(2)}m`, 20, 90);
+        const ry = THREE.MathUtils.radToDeg(targetObj.rotation.y).toFixed(1);
+        const sc = Math.round(targetObj.scale.x * 100);
+        hudContext.fillText(`Rot Y: ${ry}°  Scale: ${sc}%`, 20, 135);
+      }
+
+      if (isSurfacePlacementMode) {
+        hudContext.fillStyle = '#00e5ff';
+        hudContext.fillText('MODE: RAYCAST SURFACE PLACE', 20, 190);
+      } else {
+        hudContext.fillStyle = isLocked ? '#ff5252' : '#69f0ae';
+        hudContext.fillText(isLocked ? 'STATUS: CORRIDOR LOCKED' : 'STATUS: UNLOCKED', 20, 190);
+      }
+
+      hudTexture.needsUpdate = true;
+
+      const infoEl = document.getElementById('selected-media-info');
+      if (infoEl) {
+        infoEl.innerText = isSurfacePlacementMode ? 'Mode: Aim laser at wall/surface to place media' : `Active Target: ${labelName}`;
+      }
+    }
+
+    async function onStartAR() {
+      if (!isModelReady) return;
+
+      if ('xr' in navigator) {
+        try {
+          const supported = await navigator.xr.isSessionSupported('immersive-ar');
+          if (supported) {
+            if (!xrSession) {
+              renderer.compile(scene, camera);
+
+              xrSession = await navigator.xr.requestSession('immersive-ar', {
+                optionalFeatures: ['local-floor']
+              });
+
+              renderer.xr.setSession(xrSession);
+
+              scene.background = null;
+              renderer.setClearColor(0x000000, 0);
+              document.body.style.backgroundColor = 'transparent';
+              document.getElementById('custom-ar-button').style.display = 'none';
+              document.getElementById('ui-container').style.display = 'none';
+
+              positionPanelInFrontOfCamera();
+              ar3DMenuGroup.visible = true;
+
+              if (laserLine) laserLine.visible = true;
+
+              if (modelGroup && !isLocked) {
+                modelGroup.position.set(0, 0, -2);
+                modelGroup.rotation.set(0, 0, 0);
+              }
+
+              update3DHUDCanvas();
+
+              xrSession.addEventListener('end', () => {
+                xrSession = null;
+                scene.background = new THREE.Color(0x111111);
+                document.body.style.backgroundColor = '#111111';
+                document.getElementById('custom-ar-button').style.display = 'block';
+                document.getElementById('ui-container').style.display = 'block';
+                ar3DMenuGroup.visible = false;
+                if (laserLine) laserLine.visible = false;
+              });
+            }
+          } else {
+            alert("WebXR AR mode is not supported by this browser.");
+          }
+        } catch (err) {
+          console.error("XR Session Error:", err);
+          alert("AR Session Error: " + err.message);
+        }
+      }
+    }
+
+    function loadModel(filename) {
+      const statusEl = document.getElementById('status-msg');
+      const arBtn = document.getElementById('custom-ar-button');
+      
+      isModelReady = false;
+      arBtn.disabled = true;
+      arBtn.innerText = "LOADING MODEL...";
+      statusEl.style.color = '#ff9800';
+      statusEl.innerText = 'Downloading ' + filename + '...';
+
+      if (currentModel) modelGroup.remove(currentModel);
+
+      let baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+      let targetUrl = baseUrl + filename;
+
+      loader.load(
+        targetUrl,
+        (gltf) => {
+          currentModel = gltf.scene;
+
+          currentModel.traverse((child) => {
+            if (child.isMesh) {
+              child.frustumCulled = true;
+              if (child.material) {
+                child.material.side = THREE.DoubleSide;
+
+                if (child.material.isMeshStandardMaterial || child.material.isMeshPhongMaterial) {
+                  child.material.roughness = Math.max(child.material.roughness || 0.5, 0.4);
+                  child.material.metalness = Math.min(child.material.metalness || 0.1, 0.2);
+                }
+
+                if (child.material.map) {
+                  child.material.map.encoding = THREE.sRGBEncoding;
+                  child.material.map.generateMipmaps = true;
+                  child.material.map.minFilter = THREE.LinearMipmapLinearFilter;
+                }
+              }
+            }
+          });
+
+          let box = new THREE.Box3().setFromObject(currentModel);
+          let size = box.getSize(new THREE.Vector3());
+          
+          const maxDimension = Math.max(size.x, size.y, size.z);
+          if (maxDimension > 50) { 
+            const scaleFactor = 0.0254;
+            currentModel.scale.set(scaleFactor, scaleFactor, scaleFactor);
+          }
+
+          box = new THREE.Box3().setFromObject(currentModel);
+          const center = box.getCenter(new THREE.Vector3());
+          const finalSize = box.getSize(new THREE.Vector3());
+
+          currentModel.position.set(-center.x, -box.min.y, -box.max.z);
+          modelGroup.add(currentModel);
+
+          if (orbitControls) {
+            orbitControls.target.set(0, finalSize.y / 2, -finalSize.z / 2);
+            camera.position.set(0, finalSize.y / 2 + 1, finalSize.z * 0.5 + 2);
+            orbitControls.update();
+          }
+
+          renderer.compile(scene, camera);
+
+          statusEl.style.color = '#4CAF50';
+          statusEl.innerText = 'Ready: ' + filename;
+          
+          isModelReady = true;
+          arBtn.disabled = false;
+          arBtn.innerText = "START AR";
+
+          update3DHUDCanvas();
+        },
+        (xhr) => {
+          if (xhr.lengthComputable) {
+            const percent = Math.round((xhr.loaded / xhr.total) * 100);
+            statusEl.innerText = `Loading: ${percent}%`;
+          }
+        },
+        (error) => {
+          console.error('GLB Load Error:', error);
+          statusEl.style.color = '#f44336';
+          statusEl.innerText = 'Error loading ' + filename;
+          arBtn.innerText = "LOAD ERROR";
+        }
+      );
+    }
+
+    // --- STAGED MEDIA CREATION & UPLOAD HANDLERS ---
+    function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const fileURL = URL.createObjectURL(file);
+      const fileType = file.type.startsWith('video/') ? 'video' : 'image';
+      stagedMediaData = { type: fileType, url: fileURL };
+      
+      toggleSurfacePlacementMode(true);
+    }
+
+    function stageMediaFromURL(type) {
+      const inputEl = document.getElementById('media-url-input');
+      let url = inputEl.value.trim();
+      if (!url) {
+        alert("Please enter a valid Image, Video, or YouTube URL.");
+        return;
+      }
+
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        let videoId = "";
+        if (url.includes('v=')) {
+          videoId = url.split('v=')[1].split('&')[0];
+        } else if (url.includes('youtu.be/')) {
+          videoId = url.split('youtu.be/')[1].split('?')[0];
+        }
+        if (videoId) {
+          url = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+          type = 'image';
+        }
+      }
+
+      stagedMediaData = { type: type, url: url };
+      inputEl.value = "";
+      toggleSurfacePlacementMode(true);
+    }
+
+    function toggleSurfacePlacementMode(enable) {
+      if (enable !== undefined) {
+        isSurfacePlacementMode = enable;
+      } else {
+        isSurfacePlacementMode = !isSurfacePlacementMode;
+      }
+
+      const btn2D = document.getElementById('surface-place-btn-2d');
+      if (btn2D) {
+        btn2D.classList.toggle('btn-active', isSurfacePlacementMode);
+      }
+
+      if (!isSurfacePlacementMode && surfaceReticle) {
+        surfaceReticle.visible = false;
+      }
+
+      update3DHUDCanvas();
+    }
+
+    // RAYCAST SURFACE PLACEMENT WITH AUTO-SCALING
+    function placeStagedMediaOnSurface(point, normal, hitBoxSize) {
+      if (!stagedMediaData) {
+        stagedMediaData = { type: 'image', url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=800' };
+      }
+
+      let initialWidth = 1.2;
+      let initialHeight = 0.8;
+
+      if (hitBoxSize && hitBoxSize.x > 0.2 && hitBoxSize.y > 0.2) {
+        initialWidth = Math.min(hitBoxSize.x * 0.6, 2.5);
+        initialHeight = Math.min(hitBoxSize.y * 0.6, 1.8);
+      }
+
+      const planeGeo = new THREE.PlaneGeometry(initialWidth, initialHeight);
+      let planeMat;
+
+      if (stagedMediaData.type === 'image') {
+        const texture = new THREE.TextureLoader().load(stagedMediaData.url, () => {
+          renderer.compile(scene, camera);
+        });
+        texture.encoding = THREE.sRGBEncoding;
+        planeMat = new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide, roughness: 0.3 });
+      } else if (stagedMediaData.type === 'video') {
+        const video = document.createElement('video');
+        video.src = stagedMediaData.url;
+        video.crossOrigin = 'anonymous';
+        video.loop = true;
+        video.muted = true;
+        video.play();
+
+        const videoTexture = new THREE.VideoTexture(video);
+        videoTexture.encoding = THREE.sRGBEncoding;
+        planeMat = new THREE.MeshBasicMaterial({ map: videoTexture, side: THREE.DoubleSide });
+      }
+
+      const frameMesh = new THREE.Mesh(planeGeo, planeMat);
+
+      // Frame Border
+      const borderGeo = new THREE.BoxGeometry(initialWidth + 0.05, initialHeight + 0.05, 0.02);
+      const borderMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 });
+      const borderMesh = new THREE.Mesh(borderGeo, borderMat);
+      borderMesh.position.z = -0.011;
+      frameMesh.add(borderMesh);
+
+      frameMesh.position.copy(point).add(normal.clone().multiplyScalar(0.015));
+
+      const lookTarget = point.clone().add(normal);
+      frameMesh.lookAt(lookTarget);
+
+      frameMesh.userData = { isMediaFrame: true, rootFrame: frameMesh };
+      borderMesh.userData = { isMediaFrame: true, rootFrame: frameMesh };
+
+      mediaFramesGroup.add(frameMesh);
+      placedMediaFrames.push(frameMesh);
+
+      selectMediaFrame(frameMesh);
+      toggleSurfacePlacementMode(false);
+    }
+
+    function selectMediaFrame(frameMesh) {
+      selectedMediaFrame = frameMesh;
+      if (selectedMediaFrame) {
+        selectionBoxHelper.setFromObject(selectedMediaFrame);
+        selectionBoxHelper.visible = true;
+      } else {
+        selectionBoxHelper.visible = false;
+      }
+      update3DHUDCanvas();
+    }
+
+    function deselectMediaFrame() {
+      selectedMediaFrame = null;
+      selectionBoxHelper.visible = false;
+      update3DHUDCanvas();
+    }
+
+    function deleteSelectedMedia() {
+      if (!selectedMediaFrame) return;
+
+      mediaFramesGroup.remove(selectedMediaFrame);
+      placedMediaFrames = placedMediaFrames.filter(f => f !== selectedMediaFrame);
+      selectedMediaFrame = null;
+      selectionBoxHelper.visible = false;
+      update3DHUDCanvas();
+    }
+
+    function updateSurfaceRaycast(ray) {
+      if (!isSurfacePlacementMode) {
+        if (surfaceReticle) surfaceReticle.visible = false;
+        isSurfaceHitValid = false;
+        return;
+      }
+
+      const intersects = ray.intersectObjects(modelGroup.children, true);
+
+      if (intersects.length > 0) {
+        const hit = intersects[0];
+        surfaceHitPoint.copy(hit.point);
+        surfaceHitNormal.copy(hit.face.normal).transformDirection(hit.object.matrixWorld).normalize();
+
+        const hitBox = new THREE.Box3().setFromObject(hit.object);
+        hitBox.getSize(surfaceHitBox);
+
+        surfaceReticle.position.copy(surfaceHitPoint).add(surfaceHitNormal.clone().multiplyScalar(0.01));
+        const lookTarget = surfaceHitPoint.clone().add(surfaceHitNormal);
+        surfaceReticle.lookAt(lookTarget);
+        surfaceReticle.visible = true;
+
+        isSurfaceHitValid = true;
+      } else {
+        surfaceReticle.visible = false;
+        isSurfaceHitValid = false;
+      }
+    }
+
+    function onDesktopPointerDown(event) {
+      if (renderer.xr.isPresenting) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1
+      );
+
+      raycaster.setFromCamera(mouse, camera);
+
+      if (isSurfacePlacementMode) {
+        updateSurfaceRaycast(raycaster);
+        if (isSurfaceHitValid) {
+          placeStagedMediaOnSurface(surfaceHitPoint, surfaceHitNormal, surfaceHitBox);
+        }
+        return;
+      }
+
+      const intersects = raycaster.intersectObjects(mediaFramesGroup.children, true);
+      if (intersects.length > 0) {
+        let hitObj = intersects[0].object;
+        while (hitObj && !hitObj.userData.isMediaFrame && hitObj.parent) {
+          hitObj = hitObj.parent;
+        }
+        if (hitObj && hitObj.userData.rootFrame) {
+          selectMediaFrame(hitObj.userData.rootFrame);
+        }
+      }
+    }
+
+    // --- CONTROLLER RAYCASTING & 3D MENU CLICK HANDLER ---
+    function onControllerSelect() {
+      if (renderer.xr.isPresenting && controllerRight) {
+        const tempMatrix = new THREE.Matrix4();
+        tempMatrix.identity().extractRotation(controllerRight.matrixWorld);
+
+        const rayOrigin = new THREE.Vector3();
+        controllerRight.getWorldPosition(rayOrigin);
+        const rayDir = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix);
+
+        raycaster.set(rayOrigin, rayDir);
+
+        if (isSurfacePlacementMode) {
+          updateSurfaceRaycast(raycaster);
+          if (isSurfaceHitValid) {
+            placeStagedMediaOnSurface(surfaceHitPoint, surfaceHitNormal, surfaceHitBox);
+            return;
+          }
+        }
+
+        if (ar3DMenuGroup.visible) {
+          const intersects = raycaster.intersectObjects(ar3DButtons, true);
+          if (intersects.length > 0) {
+            let clickedObj = intersects[0].object;
+            while (clickedObj.parent && !clickedObj.userData.action) {
+              clickedObj = clickedObj.parent;
+            }
+            if (clickedObj.userData && clickedObj.userData.action) {
+              execute3DMenuAction(clickedObj.userData.action);
+              return;
+            }
+          }
+        }
+
+        const mediaIntersects = raycaster.intersectObjects(mediaFramesGroup.children, true);
+        if (mediaIntersects.length > 0) {
+          let hitObj = mediaIntersects[0].object;
+          while (hitObj && !hitObj.userData.isMediaFrame && hitObj.parent) {
+            hitObj = hitObj.parent;
+          }
+          if (hitObj && hitObj.userData.rootFrame) {
+            const rootFrame = hitObj.userData.rootFrame;
+            selectMediaFrame(rootFrame);
+
+            if (rootFrame.material && rootFrame.material.map && rootFrame.material.map.image instanceof HTMLVideoElement) {
+              const videoEl = rootFrame.material.map.image;
+              if (videoEl.paused) videoEl.play();
+              else videoEl.pause();
+            }
+            return;
+          }
+        }
+
+        if (!isLocked && isRaycastMode && floorReticle.visible && modelGroup) {
+          modelGroup.position.copy(floorReticle.position);
+          toggleRaycastPlacement();
+          update3DHUDCanvas();
+        }
+      }
+    }
+
+    function execute3DMenuAction(action) {
+      if (action === 'lock') {
+        toggleLockPosition();
+        return;
+      }
+      if (action === 'ghost') {
+        toggleGhostMode();
+        return;
+      }
+      if (action === 'del_frame') {
+        deleteSelectedMedia();
+        return;
+      }
+      if (action === 'surface_place') {
+        toggleSurfacePlacementMode();
+        return;
+      }
+
+      if (action === 'raycast' && !isLocked) {
+        toggleRaycastPlacement();
+        return;
+      }
+
+      if (action === 'roty-') rotateActiveTarget(-15);
+      else if (action === 'roty+') rotateActiveTarget(15);
+      else if (action === 'h+') moveActiveTarget(0, 0.1, 0);
+      else if (action === 'h-') moveActiveTarget(0, -0.1, 0);
+      else if (action === 's+') scaleActiveTarget(1.1);
+      else if (action === 's-') scaleActiveTarget(0.9);
+
+      update3DHUDCanvas();
+    }
+
+    // DYNAMIC TARGET TRANSFORM METHODS
+    function rotateActiveTarget(deg) {
+      const target = selectedMediaFrame ? selectedMediaFrame : modelGroup;
+      if (target === modelGroup && isLocked) return;
+      if (target) {
+        target.rotation.y += THREE.MathUtils.degToRad(deg);
+        if (selectedMediaFrame) selectionBoxHelper.update();
+        update3DHUDCanvas();
+      }
+    }
+
+    function moveActiveTarget(dx, dy, dz) {
+      const target = selectedMediaFrame ? selectedMediaFrame : modelGroup;
+      if (target === modelGroup && isLocked) return;
+      if (target) {
+        target.position.x += dx;
+        target.position.y += dy;
+        target.position.z += dz;
+        if (selectedMediaFrame) selectionBoxHelper.update();
+        update3DHUDCanvas();
+      }
+    }
+
+    function scaleActiveTarget(factor) {
+      const target = selectedMediaFrame ? selectedMediaFrame : modelGroup;
+      if (target === modelGroup && isLocked) return;
+      if (target) {
+        target.scale.multiplyScalar(factor);
+        if (selectedMediaFrame) selectionBoxHelper.update();
+        update3DHUDCanvas();
+      }
+    }
+
+    function updateRaycast() {
+      if (renderer.xr.isPresenting && controllerRight) {
+        const tempMatrix = new THREE.Matrix4();
+        tempMatrix.identity().extractRotation(controllerRight.matrixWorld);
+
+        const rayOrigin = new THREE.Vector3();
+        controllerRight.getWorldPosition(rayOrigin);
+        const rayDir = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix);
+
+        raycaster.set(rayOrigin, rayDir);
+
+        if (isSurfacePlacementMode) {
+          updateSurfaceRaycast(raycaster);
+        } else if (isRaycastMode && !isLocked) {
+          if (raycaster.ray.intersectPlane(floorPlane, rayIntersectionPoint)) {
+            floorReticle.position.copy(rayIntersectionPoint);
+            floorReticle.visible = true;
+          } else {
+            floorReticle.visible = false;
+          }
+        }
+      }
+    }
+
+    function toggleRaycastPlacement() {
+      if (isLocked) return;
+      isRaycastMode = !isRaycastMode;
+      if (!isRaycastMode && floorReticle) floorReticle.visible = false;
+    }
+
+    function rotateModelY(deg) { rotateActiveTarget(deg); }
+    function moveHeight(deltaY) { moveActiveTarget(0, deltaY, 0); }
+    function adjustScale(factor) { scaleActiveTarget(factor); }
+
+    function toggleGhostMode() {
+      isGhostMode = !isGhostMode;
+      if (currentModel) {
+        currentModel.traverse((child) => {
+          if (child.isMesh && child.material) {
+            child.material.transparent = true;
+            child.material.opacity = isGhostMode ? 0.30 : 1.0;
+          }
+        });
+      }
+    }
+
+    function toggleLockPosition() {
+      isLocked = !isLocked;
+      if (isLocked && isRaycastMode) {
+        isRaycastMode = false;
+        if (floorReticle) floorReticle.visible = false;
+      }
+      update3DHUDCanvas();
+    }
+
+    // --- CONTINUOUS CONTROLLER THUMBSTICK INPUT POLLING (SCALE & ROTATE SHORTCUTS) ---
+    function checkXRGamepadInputs() {
+      if (renderer.xr.isPresenting) {
+        const session = renderer.xr.getSession();
+        if (session) {
+          for (const source of session.inputSources) {
+            if (source.gamepad && source.gamepad.axes) {
+              const axes = source.gamepad.axes; // [touchpadX, touchpadY, thumbstickX, thumbstickY]
+              const axisX = axes[2] !== undefined ? axes[2] : axes[0];
+              const axisY = axes[3] !== undefined ? axes[3] : axes[1];
+
+              // Right Controller Joystick Shortcuts
+              if (source.handedness === 'right') {
+                // Scale Shortcut: Thumbstick Up/Down
+                if (Math.abs(axisY) > 0.3) {
+                  const scaleFactor = axisY < 0 ? 1.02 : 0.98; // Up = Scale Up, Down = Scale Down
+                  scaleActiveTarget(scaleFactor);
+                }
+                // Rotate Shortcut: Thumbstick Left/Right
+                if (Math.abs(axisX) > 0.3) {
+                  const rotAngle = axisX > 0 ? 1.5 : -1.5;
+                  rotateActiveTarget(rotAngle);
+                }
+              }
+
+              // Left Controller Joystick & Buttons
+              if (source.handedness === 'left') {
+                // Height Shortcut: Left Thumbstick Up/Down
+                if (Math.abs(axisY) > 0.3) {
+                  const deltaY = axisY < 0 ? 0.02 : -0.02;
+                  moveActiveTarget(0, deltaY, 0);
+                }
+
+                // X/Y Button Menu Toggle
+                const buttons = source.gamepad.buttons;
+                const btnPressed = (buttons[4] && buttons[4].pressed) || (buttons[5] && buttons[5].pressed) || (buttons[3] && buttons[3].pressed);
+                
+                if (btnPressed && !prevLeftBtnState) {
+                  ar3DMenuGroup.visible = !ar3DMenuGroup.visible;
+                  if (ar3DMenuGroup.visible) {
+                    positionPanelInFrontOfCamera();
+                  }
+                }
+                prevLeftBtnState = btnPressed;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      renderer.setAnimationLoop(render);
+    }
+
+    function render() {
+      checkXRGamepadInputs();
+      updateRaycast();
+
+      if (selectionBoxHelper && selectionBoxHelper.visible && selectedMediaFrame) {
+        selectionBoxHelper.update();
+      }
+
+      if (!renderer.xr.isPresenting && orbitControls) {
+        orbitControls.update();
+      }
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>
